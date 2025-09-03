@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, X, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, X, Plus, RefreshCw, ExternalLink, AlertCircle } from 'lucide-react';
 
 interface Tab {
   id: string;
@@ -21,6 +21,7 @@ export const BrowserTabs: React.FC<BrowserTabsProps> = ({
   onBackToDashboard,
   onTabChange
 }) => {
+  const [iframeErrors, setIframeErrors] = useState<Set<string>>(new Set());
   const activeTab = tabs.find(tab => tab.active);
 
   const handleTabClick = (tabId: string) => {
@@ -38,6 +39,14 @@ export const BrowserTabs: React.FC<BrowserTabsProps> = ({
         iframe.src = iframe.src;
       }
     }
+  };
+
+  const handleIframeError = (tabId: string) => {
+    setIframeErrors(prev => new Set([...prev, tabId]));
+  };
+
+  const openInNewTab = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -93,12 +102,46 @@ export const BrowserTabs: React.FC<BrowserTabsProps> = ({
       {/* Browser Content */}
       <div className="flex-1 bg-white">
         {activeTab ? (
-          <iframe
-            src={activeTab.url}
-            className="w-full h-full border-0"
-            title={activeTab.title}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-          />
+          iframeErrors.has(activeTab.id) ? (
+            <div className="flex flex-col items-center justify-center h-full bg-gray-50 p-8">
+              <AlertCircle className="w-16 h-16 text-orange-500 mb-4" />
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Connection Blocked</h2>
+              <p className="text-gray-600 text-center mb-6 max-w-md">
+                {activeTab.title} doesn't allow embedding in frames for security reasons. 
+                You can open it in a new browser tab instead.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => openInNewTab(activeTab.url)}
+                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                  <span>Open in New Tab</span>
+                </button>
+                <p className="text-sm text-gray-500 text-center">
+                  URL: <span className="font-mono">{activeTab.url}</span>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <iframe
+              src={activeTab.url}
+              className="w-full h-full border-0"
+              title={activeTab.title}
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation"
+              onError={() => handleIframeError(activeTab.id)}
+              onLoad={(e) => {
+                const iframe = e.target as HTMLIFrameElement;
+                try {
+                  // Test if we can access the iframe content
+                  iframe.contentWindow?.location.href;
+                } catch (error) {
+                  // If we can't access it, it's likely blocked by X-Frame-Options
+                  handleIframeError(activeTab.id);
+                }
+              }}
+            />
+          )
         ) : (
           <div className="flex items-center justify-center h-full text-gray-500">
             <p>No active tab</p>
