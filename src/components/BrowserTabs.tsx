@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, X, Plus, RefreshCw, ExternalLink, AlertCircle } from 'lucide-react';
+import { analytics } from '../services/analytics';
+import { useErrorHandler } from '../hooks/useErrorHandler';
 
 interface Tab {
   id: string;
@@ -21,32 +23,71 @@ export const BrowserTabs: React.FC<BrowserTabsProps> = ({
   onBackToDashboard,
   onTabChange
 }) => {
+  const { handleError } = useErrorHandler();
   const [iframeErrors, setIframeErrors] = useState<Set<string>>(new Set());
   const activeTab = tabs.find(tab => tab.active);
 
   const handleTabClick = (tabId: string) => {
-    const updatedTabs = tabs.map(tab => ({
-      ...tab,
-      active: tab.id === tabId
-    }));
-    onTabChange(updatedTabs);
+    try {
+      const updatedTabs = tabs.map(tab => ({
+        ...tab,
+        active: tab.id === tabId
+      }));
+      onTabChange(updatedTabs);
+      
+      // Track tab switch
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        analytics.trackEvent('tab_switch', {
+          tabTitle: tab.title,
+          tabUrl: tab.url
+        });
+      }
+    } catch (error) {
+      handleError(error, 'Tab switching');
+    }
   };
 
   const refreshTab = () => {
-    if (activeTab) {
-      const iframe = document.querySelector('iframe') as HTMLIFrameElement;
-      if (iframe) {
-        iframe.src = iframe.src;
+    try {
+      if (activeTab) {
+        const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+        if (iframe) {
+          iframe.src = iframe.src;
+          analytics.trackEvent('tab_refresh', {
+            tabTitle: activeTab.title,
+            tabUrl: activeTab.url
+          });
+        }
       }
+    } catch (error) {
+      handleError(error, 'Tab refresh');
     }
   };
 
   const handleIframeError = (tabId: string) => {
-    setIframeErrors(prev => new Set([...prev, tabId]));
+    try {
+      setIframeErrors(prev => new Set([...prev, tabId]));
+      
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        analytics.trackEvent('iframe_error', {
+          tabTitle: tab.title,
+          tabUrl: tab.url
+        });
+      }
+    } catch (error) {
+      handleError(error, 'Iframe error handling');
+    }
   };
 
   const openInNewTab = (url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      analytics.trackEvent('external_link_click', { url });
+    } catch (error) {
+      handleError(error, 'Opening external link');
+    }
   };
 
   return (

@@ -5,49 +5,77 @@ import { AdminPanel } from './AdminPanel';
 import { BrowserTabs } from './BrowserTabs';
 import { WelcomePopup } from './WelcomePopup';
 import { db } from '../services/database';
+import { analytics } from '../services/analytics';
+import { useErrorHandler } from '../hooks/useErrorHandler';
 import { Website } from '../types';
 
 export const Dashboard: React.FC = () => {
   const { state, logout } = useAuth();
+  const { handleError } = useErrorHandler();
   const [showAdmin, setShowAdmin] = useState(false);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [activeTabs, setActiveTabs] = useState<Array<{ id: string; title: string; url: string; active: boolean }>>([]);
 
   useEffect(() => {
-    const sites = db.getWebsites();
-    setWebsites(sites);
+    try {
+      const sites = db.getWebsites();
+      setWebsites(sites);
+      
+      // Track dashboard view
+      analytics.trackEvent('dashboard_view', {
+        userId: state.user?.id,
+        userRole: state.user?.role
+      });
+    } catch (error) {
+      handleError(error, 'Dashboard initialization');
+    }
   }, []);
 
   const openWebsite = (website: Website) => {
-    const existingTab = activeTabs.find(tab => tab.url === website.url);
-    
-    if (existingTab) {
-      setActiveTabs(tabs => 
-        tabs.map(tab => ({ ...tab, active: tab.id === existingTab.id }))
-      );
-    } else {
-      const newTab = {
-        id: `tab-${Date.now()}`,
-        title: website.name,
-        url: website.url,
-        active: true
-      };
+    try {
+      const existingTab = activeTabs.find(tab => tab.url === website.url);
       
-      setActiveTabs(tabs => [
-        ...tabs.map(tab => ({ ...tab, active: false })),
-        newTab
-      ]);
+      if (existingTab) {
+        setActiveTabs(tabs => 
+          tabs.map(tab => ({ ...tab, active: tab.id === existingTab.id }))
+        );
+      } else {
+        const newTab = {
+          id: `tab-${Date.now()}`,
+          title: website.name,
+          url: website.url,
+          active: true
+        };
+        
+        setActiveTabs(tabs => [
+          ...tabs.map(tab => ({ ...tab, active: false })),
+          newTab
+        ]);
+      }
+
+      // Track website access
+      analytics.trackEvent('website_access', {
+        websiteId: website.id,
+        websiteName: website.name,
+        userId: state.user?.id
+      });
+    } catch (error) {
+      handleError(error, 'Opening website');
     }
   };
 
   const closeTab = (tabId: string) => {
-    setActiveTabs(tabs => {
-      const newTabs = tabs.filter(tab => tab.id !== tabId);
-      if (newTabs.length > 0 && tabs.find(tab => tab.id === tabId)?.active) {
-        newTabs[newTabs.length - 1].active = true;
-      }
-      return newTabs;
-    });
+    try {
+      setActiveTabs(tabs => {
+        const newTabs = tabs.filter(tab => tab.id !== tabId);
+        if (newTabs.length > 0 && tabs.find(tab => tab.id === tabId)?.active) {
+          newTabs[newTabs.length - 1].active = true;
+        }
+        return newTabs;
+      });
+    } catch (error) {
+      handleError(error, 'Closing tab');
+    }
   };
 
   const userWebsites = websites.filter(site => 
@@ -146,7 +174,7 @@ export const Dashboard: React.FC = () => {
               {userWebsites.map((website) => (
                 <div
                   key={website.id}
-                  className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1"
+                  className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1 group"
                   onClick={() => openWebsite(website)}
                 >
                   <div className="p-6">
@@ -154,20 +182,20 @@ export const Dashboard: React.FC = () => {
                       <img
                         src={website.logo}
                         alt={`${website.name} logo`}
-                        className="w-12 h-12 object-contain rounded"
+                        className="w-12 h-12 object-contain rounded transition-transform group-hover:scale-110"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iIzNCODJGNiIvPgo8dGV4dCB4PSIyNCIgeT0iMzIiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj57e3dlYnNpdGUubmFtZVswXX19PC90ZXh0Pgo8L3N2Zz4K';
                         }}
                       />
-                      <ExternalLink className="w-5 h-5 text-gray-400" />
+                      <ExternalLink className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
                     </div>
                     
                     <h3 className="text-lg font-semibold text-gray-800 mb-2">{website.name}</h3>
                     <p className="text-gray-600 text-sm">{website.description}</p>
                     
                     <div className="mt-4 pt-4 border-t">
-                      <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                      <span className="inline-block bg-blue-100 group-hover:bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full transition-colors">
                         Click to open
                       </span>
                     </div>

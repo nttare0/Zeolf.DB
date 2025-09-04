@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Users, Plus, Trash2, Shield, BarChart3, Eye, Globe, X } from 'lucide-react';
+import { ArrowLeft, Users, Plus, Trash2, Shield, BarChart3, Eye, Globe, X, AlertCircle, CheckCircle } from 'lucide-react';
 import { User, Website } from '../types';
 import { db } from '../services/database';
 import { AnalyticsChart } from './AnalyticsChart';
+import { analytics } from '../services/analytics';
 
 interface AdminPanelProps {
   onBack: () => void;
@@ -11,10 +12,12 @@ interface AdminPanelProps {
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [websites, setWebsites] = useState<Website[]>([]);
-  const [analytics, setAnalytics] = useState<any>(null);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'websites' | 'analytics'>('users');
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showAddWebsite, setShowAddWebsite] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [newUser, setNewUser] = useState({
     username: '',
     password: '',
@@ -34,62 +37,91 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const loadData = () => {
     setUsers(db.getAllUsers());
     setWebsites(db.getWebsites());
-    setAnalytics(db.getAnalytics());
+    setAnalyticsData(analytics.getAnalyticsData());
+  };
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleCreateUser = async () => {
     if (!newUser.username || !newUser.password) return;
 
+    setIsLoading(true);
     try {
       await db.createUser(newUser.username, newUser.password, newUser.role, newUser.permissions);
       setNewUser({ username: '', password: '', role: 'user', permissions: [] });
       setShowCreateUser(false);
       loadData();
+      showNotification('success', 'User created successfully');
     } catch (error) {
       console.error('Error creating user:', error);
+      showNotification('error', 'Failed to create user');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleAddWebsite = () => {
     if (!newWebsite.name || !newWebsite.url) return;
 
+    setIsLoading(true);
     try {
       db.addWebsite(newWebsite.name, newWebsite.url, newWebsite.description);
       setNewWebsite({ name: '', url: '', description: '' });
       setShowAddWebsite(false);
       loadData();
+      showNotification('success', 'Website added successfully');
     } catch (error) {
       console.error('Error adding website:', error);
+      showNotification('error', 'Failed to add website');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleDeleteUser = (userId: string) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
-      db.deleteUser(userId);
-      loadData();
+      try {
+        db.deleteUser(userId);
+        loadData();
+        showNotification('success', 'User deleted successfully');
+      } catch (error) {
+        showNotification('error', 'Failed to delete user');
+      }
     }
   };
 
   const handleDeleteWebsite = (websiteId: string) => {
     if (window.confirm('Are you sure you want to delete this website?')) {
-      db.deleteWebsite(websiteId);
-      loadData();
+      try {
+        db.deleteWebsite(websiteId);
+        loadData();
+        showNotification('success', 'Website deleted and permissions cleaned up');
+      } catch (error) {
+        showNotification('error', 'Failed to delete website');
+      }
     }
   };
 
   const handlePermissionChange = (userId: string, websiteId: string, granted: boolean) => {
-    const user = users.find(u => u.id === userId);
-    if (!user) return;
+    try {
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
 
-    let newPermissions = [...user.permissions];
-    if (granted && !newPermissions.includes(websiteId)) {
-      newPermissions.push(websiteId);
-    } else if (!granted && newPermissions.includes(websiteId)) {
-      newPermissions = newPermissions.filter(p => p !== websiteId);
+      let newPermissions = [...user.permissions];
+      if (granted && !newPermissions.includes(websiteId)) {
+        newPermissions.push(websiteId);
+      } else if (!granted && newPermissions.includes(websiteId)) {
+        newPermissions = newPermissions.filter(p => p !== websiteId);
+      }
+
+      db.updateUserPermissions(userId, newPermissions);
+      loadData();
+    } catch (error) {
+      showNotification('error', 'Failed to update permissions');
     }
-
-    db.updateUserPermissions(userId, newPermissions);
-    loadData();
   };
 
   const extractDomainFromUrl = (url: string): string => {
@@ -112,6 +144,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center space-x-2 px-4 py-3 rounded-lg shadow-lg transition-all duration-300 ${
+          notification.type === 'success' 
+            ? 'bg-green-100 border border-green-200 text-green-800' 
+            : 'bg-red-100 border border-red-200 text-red-800'
+        }`}>
+          {notification.type === 'success' ? (
+            <CheckCircle className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span className="font-medium">{notification.message}</span>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -261,9 +309,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 <div className="flex space-x-3">
                   <button
                     onClick={handleCreateUser}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Create User
+                    {isLoading ? 'Creating...' : 'Create User'}
                   </button>
                   <button
                     onClick={() => setShowCreateUser(false)}
@@ -409,9 +458,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 <div className="flex space-x-3">
                   <button
                     onClick={handleAddWebsite}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Add Website
+                    {isLoading ? 'Adding...' : 'Add Website'}
                   </button>
                   <button
                     onClick={() => setShowAddWebsite(false)}
@@ -426,13 +476,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             {/* Websites Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {websites.map((website) => (
-                <div key={website.id} className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300">
+                <div key={website.id} className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 group">
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <img
                         src={website.logo}
                         alt={`${website.name} logo`}
-                        className="w-12 h-12 object-contain rounded"
+                        className="w-12 h-12 object-contain rounded transition-transform group-hover:scale-110"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.src = generateLogoUrl(website.url);
@@ -440,7 +490,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                       />
                       <button
                         onClick={() => handleDeleteWebsite(website.id)}
-                        className="text-red-500 hover:text-red-700 transition-colors"
+                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-all"
+                        title="Delete website"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -448,9 +499,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                     
                     <h3 className="text-lg font-semibold text-gray-800 mb-2">{website.name}</h3>
                     <p className="text-gray-600 text-sm mb-3">{website.description}</p>
-                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded flex-1 mr-2">
                       {extractDomainFromUrl(website.url)}
-                    </p>
+                      </p>
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                        Active
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -458,78 +514,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           </div>
         )}
 
-        {activeTab === 'analytics' && analytics && (
+        {activeTab === 'analytics' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-semibold text-gray-800">Analytics & Statistics</h2>
-            
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Users</p>
-                    <p className="text-2xl font-bold text-gray-900">{analytics.totalVisitors}</p>
-                  </div>
-                  <Users className="w-8 h-8 text-blue-600" />
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Recent Logins</p>
-                    <p className="text-2xl font-bold text-gray-900">{analytics.loggedInUsers}</p>
-                  </div>
-                  <Eye className="w-8 h-8 text-green-600" />
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Active Sessions</p>
-                    <p className="text-2xl font-bold text-gray-900">{Math.min(analytics.loginSessions.length, 5)}</p>
-                  </div>
-                  <BarChart3 className="w-8 h-8 text-purple-600" />
-                </div>
-              </div>
-            </div>
-
-            {/* Analytics Charts */}
+            <h2 className="text-lg font-semibold text-gray-800">Real-time Analytics & Statistics</h2>
             <AnalyticsChart />
-
-            {/* Recent Login Sessions */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-800">Recent Login Sessions</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Login Time</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Agent</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {analytics.loginSessions.slice(0, 10).map((session: any, index: number) => (
-                      <tr key={index} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{session.username}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(session.loginTime).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                          {session.userAgent}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         )}
       </div>
