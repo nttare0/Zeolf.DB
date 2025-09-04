@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Users, Plus, Trash2, Shield, BarChart3, Eye } from 'lucide-react';
+import { ArrowLeft, Users, Plus, Trash2, Shield, BarChart3, Eye, Globe, X } from 'lucide-react';
 import { User, Website } from '../types';
 import { db } from '../services/database';
+import { AnalyticsChart } from './AnalyticsChart';
 
 interface AdminPanelProps {
   onBack: () => void;
@@ -11,13 +12,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [websites, setWebsites] = useState<Website[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'analytics'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'websites' | 'analytics'>('users');
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showAddWebsite, setShowAddWebsite] = useState(false);
   const [newUser, setNewUser] = useState({
     username: '',
     password: '',
     role: 'user' as 'user' | 'admin',
     permissions: [] as string[]
+  });
+  const [newWebsite, setNewWebsite] = useState({
+    name: '',
+    url: '',
+    description: ''
   });
 
   useEffect(() => {
@@ -43,9 +50,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     }
   };
 
+  const handleAddWebsite = () => {
+    if (!newWebsite.name || !newWebsite.url) return;
+
+    try {
+      db.addWebsite(newWebsite.name, newWebsite.url, newWebsite.description);
+      setNewWebsite({ name: '', url: '', description: '' });
+      setShowAddWebsite(false);
+      loadData();
+    } catch (error) {
+      console.error('Error adding website:', error);
+    }
+  };
+
   const handleDeleteUser = (userId: string) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       db.deleteUser(userId);
+      loadData();
+    }
+  };
+
+  const handleDeleteWebsite = (websiteId: string) => {
+    if (window.confirm('Are you sure you want to delete this website?')) {
+      db.deleteWebsite(websiteId);
       loadData();
     }
   };
@@ -63,6 +90,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
 
     db.updateUserPermissions(userId, newPermissions);
     loadData();
+  };
+
+  const extractDomainFromUrl = (url: string): string => {
+    try {
+      const domain = new URL(url).hostname;
+      return domain.replace('www.', '');
+    } catch {
+      return url;
+    }
+  };
+
+  const generateLogoUrl = (url: string): string => {
+    try {
+      const domain = new URL(url).hostname;
+      return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+    } catch {
+      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iOCIgZmlsbD0iIzNCODJGNiIvPgo8dGV4dCB4PSIzMiIgeT0iNDAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5XPC90ZXh0Pgo8L3N2Zz4K';
+    }
   };
 
   return (
@@ -103,6 +148,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             <span>User Management</span>
           </button>
           <button
+            onClick={() => setActiveTab('websites')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              activeTab === 'websites'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            <span>Website Management</span>
+          </button>
+          <button
             onClick={() => setActiveTab('analytics')}
             className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === 'analytics'
@@ -135,7 +191,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             {/* Create User Form */}
             {showCreateUser && (
               <div className="bg-white rounded-xl shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">Create New User</h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Create New User</h3>
+                  <button
+                    onClick={() => setShowCreateUser(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
@@ -283,6 +347,117 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           </div>
         )}
 
+        {activeTab === 'websites' && (
+          <div className="space-y-6">
+            {/* Add Website Button */}
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold text-gray-800">Website Management</h2>
+              <button
+                onClick={() => setShowAddWebsite(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Website</span>
+              </button>
+            </div>
+
+            {/* Add Website Form */}
+            {showAddWebsite && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Add New Website</h3>
+                  <button
+                    onClick={() => setShowAddWebsite(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Website Name</label>
+                    <input
+                      type="text"
+                      value={newWebsite.name}
+                      onChange={(e) => setNewWebsite({ ...newWebsite, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Enter website name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Website URL</label>
+                    <input
+                      type="url"
+                      value={newWebsite.url}
+                      onChange={(e) => setNewWebsite({ ...newWebsite, url: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      value={newWebsite.description}
+                      onChange={(e) => setNewWebsite({ ...newWebsite, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Brief description of the website"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleAddWebsite}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Add Website
+                  </button>
+                  <button
+                    onClick={() => setShowAddWebsite(false)}
+                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Websites Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {websites.map((website) => (
+                <div key={website.id} className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300">
+                  <div className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <img
+                        src={website.logo}
+                        alt={`${website.name} logo`}
+                        className="w-12 h-12 object-contain rounded"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = generateLogoUrl(website.url);
+                        }}
+                      />
+                      <button
+                        onClick={() => handleDeleteWebsite(website.id)}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">{website.name}</h3>
+                    <p className="text-gray-600 text-sm mb-3">{website.description}</p>
+                    <p className="text-xs text-gray-500 font-mono bg-gray-50 p-2 rounded">
+                      {extractDomainFromUrl(website.url)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'analytics' && analytics && (
           <div className="space-y-6">
             <h2 className="text-lg font-semibold text-gray-800">Analytics & Statistics</h2>
@@ -320,6 +495,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
               </div>
             </div>
 
+            {/* Analytics Charts */}
+            <AnalyticsChart />
+
             {/* Recent Login Sessions */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200">
@@ -354,34 +532,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2">
-        <div className="flex space-x-2 bg-white rounded-full shadow-lg p-2">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-              activeTab === 'users'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Users</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-              activeTab === 'analytics'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span>Analytics</span>
-          </button>
-        </div>
       </div>
     </div>
   );

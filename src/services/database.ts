@@ -31,7 +31,7 @@ class DatabaseService {
         username: 'admin',
         password: adminPassword,
         role: 'admin',
-        permissions: ['github', 'stackoverflow', 'google', 'youtube'],
+        permissions: ['github', 'stackoverflow', 'google', 'youtube', 'zeolf', 'zeolf-erp'],
         createdAt: new Date().toISOString(),
         lastLogin: undefined
       },
@@ -40,7 +40,7 @@ class DatabaseService {
         username: 'user',
         password: userPassword,
         role: 'user',
-        permissions: ['github', 'stackoverflow'],
+        permissions: ['github', 'stackoverflow', 'zeolf'],
         createdAt: new Date().toISOString(),
         lastLogin: undefined
       }
@@ -74,6 +74,20 @@ class DatabaseService {
         url: 'https://youtube.com',
         logo: 'https://www.youtube.com/s/desktop/f506bd45/img/favicon_32x32.png',
         description: 'Video sharing platform'
+      },
+      {
+        id: 'zeolf',
+        name: 'Zeolf',
+        url: 'https://zeolf.com',
+        logo: 'https://www.google.com/s2/favicons?domain=zeolf.com&sz=64',
+        description: 'Zeolf main website'
+      },
+      {
+        id: 'zeolf-erp',
+        name: 'Zeolf ERP',
+        url: 'https://erp.zeolf.com/index.php?mainmenu=home',
+        logo: 'https://www.google.com/s2/favicons?domain=erp.zeolf.com&sz=64',
+        description: 'Zeolf ERP system for business management'
       }
     ];
 
@@ -172,6 +186,52 @@ class DatabaseService {
   getWebsites(): Website[] {
     const websites = localStorage.getItem('websites');
     return websites ? JSON.parse(websites) : [];
+  }
+
+  addWebsite(name: string, url: string, description: string): Website {
+    const websites = this.getWebsites();
+    
+    // Generate logo URL from domain
+    const generateLogoUrl = (url: string): string => {
+      try {
+        const domain = new URL(url).hostname;
+        return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+      } catch {
+        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iOCIgZmlsbD0iIzNCODJGNiIvPgo8dGV4dCB4PSIzMiIgeT0iNDAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5XPC90ZXh0Pgo8L3N2Zz4K';
+      }
+    };
+    
+    const newWebsite: Website = {
+      id: `website-${Date.now()}`,
+      name,
+      url: url.startsWith('http') ? url : `https://${url}`,
+      logo: generateLogoUrl(url),
+      description
+    };
+
+    websites.push(newWebsite);
+    localStorage.setItem('websites', JSON.stringify(websites));
+
+    return newWebsite;
+  }
+
+  deleteWebsite(websiteId: string): boolean {
+    const websites = this.getWebsites();
+    const filteredWebsites = websites.filter(w => w.id !== websiteId);
+    
+    if (filteredWebsites.length !== websites.length) {
+      localStorage.setItem('websites', JSON.stringify(filteredWebsites));
+      
+      // Remove website permissions from all users
+      const users = this.getAllUsers();
+      users.forEach(user => {
+        user.permissions = user.permissions.filter(p => p !== websiteId);
+      });
+      localStorage.setItem('users', JSON.stringify(users));
+      
+      return true;
+    }
+    return false;
   }
 
   getLoginSessions() {
